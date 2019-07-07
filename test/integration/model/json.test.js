@@ -2,11 +2,12 @@
 
 const chai = require('chai'),
   Sequelize = require('../../../index'),
+  Op = Sequelize.Op,
   Promise = Sequelize.Promise,
   moment = require('moment'),
   expect = chai.expect,
-  Support = require(__dirname + '/../support'),
-  DataTypes = require(__dirname + '/../../../lib/data-types'),
+  Support = require('../support'),
+  DataTypes = require('../../../lib/data-types'),
   current = Support.sequelize;
 
 describe(Support.getTestDialectTeaser('Model'), () => {
@@ -39,8 +40,8 @@ describe(Support.getTestDialectTeaser('Model'), () => {
               transaction,
               lock: transaction.LOCK.UPDATE,
               logging: sql => {
-                if (sql.indexOf('SELECT') !== -1 && sql.indexOf('CREATE') === -1) {
-                  expect(sql.indexOf('FOR UPDATE')).not.to.be.equal(-1);
+                if (sql.includes('SELECT') && !sql.includes('CREATE')) {
+                  expect(sql.includes('FOR UPDATE')).to.be.true;
                 }
               }
             }).then(() => {
@@ -115,7 +116,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
             where: {
               'data.name.first': 'Rick'
             }
-          })).then(() => this.Event.findById(2)).then(event => {
+          })).then(() => this.Event.findByPk(2)).then(event => {
             expect(event.get('data')).to.eql({
               name: {
                 first: 'Rick',
@@ -161,7 +162,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
                 }
               }
             }
-          })).then(() => this.Event.findById(2)).then(event => {
+          })).then(() => this.Event.findByPk(2)).then(event => {
             expect(event.get('data')).to.eql({
               name: {
                 first: 'Rick',
@@ -281,7 +282,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
             return this.Event.findAll({
               where: {
                 json: {
-                  lastLogin: {$between: [before, after]}
+                  lastLogin: { [Op.between]: [before, after] }
                 }
               }
             }).then(events => {
@@ -324,7 +325,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
             return this.Event.findAll({
               where: {
                 json: {
-                  active: {$in: [true, false]}
+                  active: { [Op.in]: [true, false] }
                 }
               }
             }).then(events => {
@@ -364,7 +365,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
               where: {
                 data: {
                   age: {
-                    $gt: 38
+                    [Op.gt]: 38
                   }
                 }
               }
@@ -515,7 +516,7 @@ describe(Support.getTestDialectTeaser('Model'), () => {
                     last: 'Simpson'
                   },
                   employment: {
-                    $ne: 'None'
+                    [Op.ne]: 'None'
                   }
                 }
               },
@@ -684,6 +685,18 @@ describe(Support.getTestDialectTeaser('Model'), () => {
           });
         });
 
+        it('should properly escape path keys', function() {
+          return this.Model.findAll({
+            raw: true,
+            attributes: ['id'],
+            where: {
+              data: {
+                "a')) AS DECIMAL) = 1 DELETE YOLO INJECTIONS; -- ": 1
+              }
+            }
+          });
+        });
+
         it('should properly escape the single quotes in array', function() {
           return this.Model.create({
             data: {
@@ -775,7 +788,8 @@ describe(Support.getTestDialectTeaser('Model'), () => {
                   employment: 'Nuclear Safety Inspector'
                 });
               });
-            } else if (current.options.dialect === 'postgres') {
+            }
+            if (current.options.dialect === 'postgres') {
               return expect(this.Event.findAll({
                 where: {
                   data: {
